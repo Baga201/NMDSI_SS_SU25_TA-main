@@ -1,0 +1,71 @@
+{% if run_info %}
+<div class="row"><strong>Run info</strong></div>
+<div class="row"><small>run_id:</small> <code>{{ run_info.id }}</code></div>
+<div class="row"><small>status:</small> <code>{{ run_info.status }}</code></div>
+{% if run_info.model %}<div class="row"><small>model:</small> <code>{{ run_info.model }}</code></div>{% endif %}
+{% if run_info.created_at %}<div class="row"><small>created_at:</small> <code>{{ run_info.created_at }}</code></div>{% endif %}
+{% if run_info.completed_at %}<div class="row"><small>completed_at:</small> <code>{{ run_info.completed_at }}</code></div>{% endif %}
+{% if run_info.safety %}
+  <div class="row"><small>safety:</small> <code>{{ run_info.safety.status }}</code>
+    {% if run_info.safety.reasons %} — {{ run_info.safety.reasons }}{% endif %}
+  </div>
+{% endif %}
+{% if run_info.critic %}
+  <div class="row"><small>critic.confidence:</small> <code>{{ '%.2f'|format(run_info.critic.confidence) }}</code></div>
+  <div class="row"><small>critic.hallucination_risk:</small> <code>{{ run_info.critic.hallucination_risk }}</code></div>
+  <div class="row"><small>critic.missing_citations:</small> <code>{{ run_info.critic.missing_citations }}</code></div>
+  {% if run_info.critic.notes %}<div class="row"><small>critic.notes:</small> <code>{{ run_info.critic.notes }}</code></div>{% endif %}
+{% endif %}
+{% if run_info.role_adapter %}
+  <div class="row"><small>adapted_for:</small> <code>{{ run_info.role_adapter.role }}</code></div>
+  <details>
+    <summary>Adapted answer</summary>
+    <div class="content">{{ run_info.role_adapter.adapted_text }}</div>
+    <div><small>strategy:</small> <code>{{ run_info.role_adapter.strategy }}</code></div>
+  </details>
+{% endif %}
+{% endif %}
+
+{% if run_trace and run_trace|length > 0 %}
+  <hr/>
+  <div class="row"><strong>Trace (steps)</strong></div>
+  <div class="events">
+    {% for st in run_trace %}
+      <div class="row">
+        [{{ loop.index }}]
+        {% if st.tool_name %}<strong>{{ st.tool_name }}</strong>{% else %}<em>{{ st.step_type or 'step' }}</em>{% endif %}
+        {% if st.status %}<small>({{ st.status }})</small>{% endif %}
+        {% if st.text %} — {{ st.text | truncate(120) }}{% endif %}
+        <details>
+          <summary>Inputs / Outputs / Metadata</summary>
+          {% if st.tool_input %}
+            <div><small>input:</small>
+              <pre>{{ st.tool_input }}</pre>
+            </div>
+          {% endif %}
+          {% if st.tool_output %}
+            <div><small>output:</small>
+              <pre>{{ st.tool_output }}</pre>
+            </div>
+          {% endif %}
+          {% if st.tool_name %}
+            <div><small>tool:</small> <code>{{ st.tool_name }}</code></div>
+          {% endif %}
+          {% if st.agent_id %}
+            <div><small>agent_id:</small> <code>{{ st.agent_id }}</code></div>
+          {% endif %}
+          {% if st.timestamp %}
+            <div><small>timestamp:</small> <code>{{ st.timestamp }}</code></div>
+          {% endif %}
+          {% if st.repr %}
+            <div><small>repr:</small>
+              <pre>{{ st.repr | truncate(600) }}</pre>
+            </div>
+          {% endif %}
+        </details>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div><small>No run selected yet.</small></div>
+{% endif %}

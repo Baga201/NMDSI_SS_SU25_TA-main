@@ -1,0 +1,10 @@
+{% if run_events and run_events|length > 0 %}
+  {% for item in run_events %}
+    <div>[{{ loop.index }}] {{ item.event_type }}: {{ item.event_data }}</div>
+  {% endfor %}
+  {% if run_complete %}
+    <div><small>(run complete)</small></div>
+  {% endif %}
+{% else %}
+  <div><small>Waiting for events …</small></div>
+{% endif %}

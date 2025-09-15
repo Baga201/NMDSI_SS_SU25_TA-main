@@ -1,0 +1,107 @@
+{% if delegation_chain and delegation_chain|length > 0 %}
+<div class="row"><small>Delegation: {{ ' → '.join(delegation_chain) }}</small></div>
+{% endif %}
+
+{% if chat_history and chat_history|length > 0 %}
+  {% for e in chat_history %}
+  {% set bubble_kind = (e.role|lower == 'user') and 'user' or ((e.role|lower == 'system') and 'system' or 'agent') %}
+    <div class="bubble {{ bubble_kind }}">
+      <div class="hdr">
+        <span class="avatar {{ bubble_kind }}">{{ (e.agent or e.role)[0:2]|upper }}</span>
+        <div style="display:flex;align-items:center;gap:8px;width:100%">
+          <div>@{{ e.agent or e.role }}{% if e.delegated_to %} → {{ e.delegated_to }}{% elif e.delegated_from %} ← {{ e.delegated_from }}{% endif %}</div>
+          <div class="meta">{% if e.is_final %}<strong>(final)</strong>{% endif %}{% if e.ts %} {{ e.ts }}{% endif %}</div>
+        </div>
+      </div>
+
+      <div class="content">{{ e.text }}</div>
+
+      {% if e.structured and e.structured_json %}
+        <div class="structured">
+          {% for k, v in e.structured_json.items() %}
+            <div class="kv"><strong>{{ k }}:</strong>
+              {% if v is mapping or v is sequence %}
+                <pre>{{ v }}</pre>
+              {% else %}
+                <span>{{ v }}</span>
+              {% endif %}
+            </div>
+          {% endfor %}
+          <div class="details-toggle" onclick="this.parentElement.querySelector('details').style.display = (this.parentElement.querySelector('details').style.display==='block'?'none':'block')">Show raw JSON</div>
+          <details style="display:none; margin-top:6px;">
+            <summary>Raw structured JSON</summary>
+            <pre>{{ e.structured_json }}</pre>
+            {% if e.structured_valid is defined %}<div><small>structured_valid: {{ e.structured_valid }}</small></div>{% endif %}
+            {% if e.structured_missing %}<div><small>missing_keys: {{ e.structured_missing }}</small></div>{% endif %}
+          </details>
+        </div>
+      {% elif e.structured %}
+        <details>
+          <summary>Structured output (raw)</summary>
+          <pre>{{ e.structured_json or e.text }}</pre>
+        </details>
+      {% endif %}
+
+      {% if e.original_text %}
+        <details style="margin-top:6px;">
+          <summary>Original answer</summary>
+          <div class="content">{{ e.original_text }}</div>
+          {% if e.adapt_strategy %}<div><small>strategy:</small> <code>{{ e.adapt_strategy }}</code></div>{% endif %}
+        </details>
+      {% endif %}
+    </div>
+  {% endfor %}
+  {% if run_info or run_trace %}
+    <hr/>
+    <div class="row"><strong>Run info</strong></div>
+    {% if run_info %}
+      <div class="row"><small>run_id:</small> <code>{{ run_info.id }}</code></div>
+      <div class="row"><small>status:</small> <code>{{ run_info.status }}</code></div>
+      {% if run_info.created_at %}<div class="row"><small>created_at:</small> <code>{{ run_info.created_at }}</code></div>{% endif %}
+      {% if run_info.completed_at %}<div class="row"><small>completed_at:</small> <code>{{ run_info.completed_at }}</code></div>{% endif %}
+      {% if run_info.model %}<div class="row"><small>model:</small> <code>{{ run_info.model }}</code></div>{% endif %}
+    {% endif %}
+    {% if run_trace and run_trace|length > 0 %}
+      <div class="row"><strong>Trace (steps)</strong></div>
+      <div class="events">
+        {% for st in run_trace %}
+          <div class="row">
+            [{{ loop.index }}]
+            {% if st.tool_name %}<strong>{{ st.tool_name }}</strong>{% else %}<em>{{ st.step_type or 'step' }}</em>{% endif %}
+            {% if st.status %}<small>({{ st.status }})</small>{% endif %}
+            {% if st.text %} — {{ st.text | truncate(180) }}{% endif %}
+            <details>
+              <summary>Inputs / Outputs / Metadata</summary>
+              {% if st.tool_input %}
+                <div><small>input:</small>
+                  <pre>{{ st.tool_input }}</pre>
+                </div>
+              {% endif %}
+              {% if st.tool_output %}
+                <div><small>output:</small>
+                  <pre>{{ st.tool_output }}</pre>
+                </div>
+              {% endif %}
+              {% if st.tool_name %}
+                <div><small>tool:</small> <code>{{ st.tool_name }}</code></div>
+              {% endif %}
+              {% if st.agent_id %}
+                <div><small>agent_id:</small> <code>{{ st.agent_id }}</code></div>
+              {% endif %}
+              {% if st.timestamp %}
+                <div><small>timestamp:</small> <code>{{ st.timestamp }}</code></div>
+              {% endif %}
+              {% if st.repr %}
+                <div><small>repr:</small>
+                  <pre>{{ st.repr | truncate(600) }}</pre>
+                </div>
+              {% endif %}
+            </details>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endif %}
+{% else %}
+  <div><em>Say hi! The orchestrator will delegate to workers as needed (you’ll see @mentions).</em></div>
+{% endif %}

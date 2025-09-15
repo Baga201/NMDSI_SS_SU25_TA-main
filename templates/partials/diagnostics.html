@@ -1,0 +1,45 @@
+<div>
+  <h3>Diagnostics</h3>
+  {% if report.error %}
+    <div style="color:#b91c1c;">Error: {{ report.error }}</div>
+  {% endif %}
+
+  <div class="row">
+    <div><strong>Leader ID (.env):</strong> <code>{{ report.leader_id_env or '—' }}</code></div>
+  </div>
+
+  <div class="row">
+    <div><strong>Workers (.env):</strong></div>
+    <ul>
+      <li>librarian_rag: <code>{{ report.workers_env.librarian_rag or '—' }}</code></li>
+      <li>therapy_expert: <code>{{ report.workers_env.therapy_expert or '—' }}</code></li>
+      <li>robotics_expert: <code>{{ report.workers_env.robotics_expert or '—' }}</code></li>
+    </ul>
+  </div>
+
+  <div class="row">
+    <div><strong>Leader connected tools:</strong></div>
+    {% if report.leader_tools and report.leader_tools|length > 0 %}
+      <ul>
+        {% for t in report.leader_tools %}
+          <li>{{ t.name or '—' }} — <code>{{ t.id or '—' }}</code></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div>No connected-agent tools found on leader.</div>
+    {% endif %}
+  </div>
+
+  <div class="row">
+    <div><strong>Mismatches:</strong></div>
+    {% if report.mismatches and report.mismatches|length > 0 %}
+      <ul>
+        {% for m in report.mismatches %}
+          <li>{{ m.name }} — {{ m.reason }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div>None detected.</div>
+    {% endif %}
+  </div>
+</div>

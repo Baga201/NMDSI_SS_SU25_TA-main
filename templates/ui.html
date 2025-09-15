@@ -1,0 +1,209 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Multi-Agent Group Chat (HTML)</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <style>
+      /* Page layout */
+      body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 20px; background: #f8fafc; color: #111827; }
+      .layout { display: grid; grid-template-columns: 1.1fr 3fr 1fr; gap: 16px; align-items: start; }
+      .card { border: 1px solid #e6e9ef; border-radius: 12px; padding: 12px 14px; background: #fff; box-shadow: 0 1px 2px rgba(2,6,23,0.03); }
+
+      /* Chat bubble / messenger styles */
+      .bubble { border-radius: 14px; padding: 10px 12px; margin: 8px 0; max-width: 78%; line-height: 1.35; display: block; }
+      .bubble .hdr { color: #374151; font-weight: 700; margin-bottom: 6px; font-size: 12px; display:flex; align-items:center; gap:8px; }
+      .bubble .meta { margin-left: auto; font-size:11px; color:#6b7280; font-weight:500; }
+      .bubble.user { margin-left: auto; background: linear-gradient(180deg,#dcf8c6,#c9f0b7); border: 1px solid #cdebb6; }
+      .bubble.agent { margin-right: auto; background: linear-gradient(180deg,#ffffff,#f6f8ff); border: 1px solid #e3e6ef; }
+      .bubble.system { margin: 8px auto; background: #fff8e1; border: 1px dashed #f59e0b; }
+
+      .bubble .avatar { width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; margin-right: 8px; }
+      .avatar.user { background: #10b981; }
+      .avatar.agent { background: #2563eb; }
+      .avatar.system { background: #f59e0b; color: #1f2937; }
+
+      .bubble .content { white-space: pre-wrap; font-size: 14px; }
+      .bubble .structured { margin-top:8px; background:#f9fafb; border-radius:8px; padding:8px; font-size:13px; }
+      .bubble .kv { margin: 4px 0; }
+      .bubble .kv strong { color:#111827; display:inline-block; width:160px; }
+      .bubble .kv pre { background: #fff; border: 1px solid #eef2f7; padding:6px; border-radius:6px; font-size:13px; white-space:pre-wrap; }
+
+      .bubble .details-toggle { font-size:12px; color:#475569; margin-top:6px; cursor:pointer; }
+
+      small { color: #6b7280; }
+      .controls textarea { width: 100%; }
+      .events { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; white-space: pre-wrap; }
+      .row { margin: 8px 0; }
+      .btn { padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f3f4f6; cursor: pointer; }
+      .btn.primary { background: #2563eb; color: white; border-color: #1d4ed8; }
+
+      /* Narrow screen tweaks */
+      @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .bubble { max-width: 92%; } }
+    </style>
+  </head>
+  <body>
+    <h2>Multi-Agent Group Chat</h2>
+    <div class="layout">
+      <div class="card">
+        <h3>Controls</h3>
+  <form hx-post="/ui/chat" hx-target="#conversation" hx-swap="innerHTML" hx-encoding="multipart/form-data" enctype="multipart/form-data">
+          <input type="hidden" name="session_id" value="{{ session_id }}" />
+          <div class="row">
+            <label>Your role</label>
+            <select name="role">
+              <option>Student</option>
+              <option>Executive</option>
+              <option>Engineer</option>
+              <option>Therapist</option>
+              <option>Robotics Specialist</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>Message</label>
+            <textarea name="message" rows="4" placeholder="Mention agents with @librarian_rag, @therapy_expert, @robotics_expert"></textarea>
+            <div id="inline-typing" style="min-height:18px; color:#6b7280; font-size:12px; margin-top:4px;"><span></span></div>
+          </div>
+          <div class="row">
+            <label>Image (optional)</label>
+            <input type="file" name="image" accept="image/*" />
+          </div>
+          <div class="row">
+            <button type="submit" class="btn primary">Send</button>
+          </div>
+        </form>
+      </div>
+
+      <div id="conversation" class="card">
+        {% include 'partials/conversation.html' %}
+      </div>
+
+      <div class="card">
+        <h3>Session</h3>
+        <div class="row">
+          <label>session_id</label>
+          <div><code>{{ session_id }}</code></div>
+        </div>
+        <hr/>
+        <h3>Live run events</h3>
+        <div class="events" id="events" data-session-id="{{ session_id }}" style="max-height: 180px; overflow:auto;">
+          Connecting to live events…
+        </div>
+        <div class="card" style="margin-top:8px;">
+          <h4>Indicators</h4>
+          <div id="indicators"><small>Waiting…</small></div>
+        </div>
+        <script>
+          (function(){
+            const el = document.getElementById('events');
+            const sid = el.getAttribute('data-session-id');
+            const ind = document.getElementById('indicators');
+            let esConnected = false;
+            const activeAgents = new Map(); // agent -> lastSeen ms
+            function appendLine(text){
+              const d = document.createElement('div');
+              d.textContent = text;
+              el.appendChild(d);
+              el.scrollTop = el.scrollHeight;
+            }
+            function renderIndicators(){
+              const now = Date.now();
+              // Clean expired entries: value may be timestamp expiry or last-seen ms
+              for (const [k,v] of activeAgents) {
+                if (typeof v === 'number') {
+                  // If v looks like a future expiry timestamp, keep until now > v
+                  if (v > now && v - now <= 60_000) continue; // still within expiry
+                  // If v is recent 'last seen' timestamp (not expiry), keep for 5s
+                  if (v <= now && now - v <= 5000) continue;
+                }
+                activeAgents.delete(k);
+              }
+              const items = [...activeAgents.keys()];
+              ind.innerHTML = items.length === 0 ? '<small>Idle</small>' : `<small>${items.map(a=>`@${a} typing…`).join(' · ')}</small>`;
+              const ib = document.querySelector('#inline-typing span');
+              if (ib) ib.textContent = items.length === 0 ? '' : `${items.map(a=>`@${a} typing…`).join(' · ')}`;
+            }
+            setInterval(renderIndicators, 800);
+            if (window.EventSource) {
+              try {
+                const es = new EventSource(`/events_sse?session_id=${encodeURIComponent(sid)}`);
+                es.onopen = () => { esConnected = true; el.textContent = 'Live (SSE) connected.'; };
+                es.onmessage = (ev) => {
+                  try {
+                    const rec = JSON.parse(ev.data);
+                    const text = typeof rec.event_data === 'object' ? JSON.stringify(rec.event_data) : rec.event_data;
+                    appendLine(`${rec.event_type}: ${text}`);
+                    // mark typing on agent_message, delegation (to), reply (from), and explicit typing events
+                    if (rec.event_type === 'typing' && rec.event_data && rec.event_data.agent) {
+                      // set lastSeen with an expiry window (duration from server)
+                      const dur = rec.event_data.duration || 800;
+                      activeAgents.set(rec.event_data.agent, Date.now() + (dur || 800));
+                    } else if (rec.event_type === 'agent_message' && rec.event_data && rec.event_data.agent) {
+                      activeAgents.set(rec.event_data.agent, Date.now());
+                    } else if (rec.event_type === 'delegation' && rec.event_data && rec.event_data.to) {
+                      activeAgents.set(rec.event_data.to, Date.now());
+                    } else if (rec.event_type === 'reply' && rec.event_data && rec.event_data.from) {
+                      activeAgents.set(rec.event_data.from, Date.now());
+                    }
+                  } catch (e) {
+                    appendLine(ev.data);
+                  }
+                };
+                es.addEventListener('done', () => { appendLine('(run complete)'); es.close(); });
+                es.onerror = () => { appendLine('(SSE error; falling back to polling)'); es.close(); esConnected = false; };
+              } catch (e) {
+                // ignore, fallback below
+              }
+            }
+            if (!esConnected) {
+              setInterval(async () => {
+                if (esConnected) return;
+                try {
+                  const r = await fetch(`/events?session_id=${encodeURIComponent(sid)}`);
+                  if (!r.ok) return;
+                  const data = await r.json();
+                  el.textContent = '';
+                  for (const rec of (data.run_events || [])) {
+                        const text = typeof rec.event_data === 'object' ? JSON.stringify(rec.event_data) : rec.event_data;
+                        appendLine(`${rec.event_type}: ${text}`);
+                        if (rec.event_type === 'typing' && rec.event_data && rec.event_data.agent) {
+                          const dur = rec.event_data.duration || 800;
+                          activeAgents.set(rec.event_data.agent, Date.now() + dur);
+                        } else if (rec.event_type === 'agent_message' && rec.event_data && rec.event_data.agent) {
+                          activeAgents.set(rec.event_data.agent, Date.now());
+                        } else if (rec.event_type === 'delegation' && rec.event_data && rec.event_data.to) {
+                          activeAgents.set(rec.event_data.to, Date.now());
+                        } else if (rec.event_type === 'reply' && rec.event_data && rec.event_data.from) {
+                          activeAgents.set(rec.event_data.from, Date.now());
+                        }
+                  }
+                  if (data.run_complete) appendLine('(run complete)');
+                } catch {}
+              }, 1000);
+            }
+          })();
+        </script>
+        <hr/>
+        <h3>Run details</h3>
+        <div class="events" id="run-details" hx-get="/ui/run_details?session_id={{ session_id }}" hx-trigger="every 2s">
+          Loading run details…
+        </div>
+        <hr/>
+        <h3>Diagnostics</h3>
+        <div class="events" id="diagnostics" hx-get="/ui/diagnostics?session_id={{ session_id }}" hx-trigger="every 5s">
+          Loading diagnostics…
+        </div>
+        <hr/>
+        <h3>Reset</h3>
+        <form hx-post="/ui/reset" hx-target="#conversation" hx-swap="innerHTML">
+          <input type="hidden" name="session_id" value="{{ session_id }}" />
+          <label><input type="checkbox" name="new_thread" checked> Start a new thread</label>
+          <div class="row">
+            <button type="submit" class="btn">Reset agents</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </body>
+</html>

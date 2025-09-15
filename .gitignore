@@ -1,0 +1,24 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/
+
+# Environment
+.env
+.envsample
+
+# Azure SDK samples (exclude from repo)
+azure-ai-agents/
+azure-ai-projects/
+data/*
+
+# Node/React
+node_modules/
+build/
+
+# Misc
+.DS_Store
+*.log
